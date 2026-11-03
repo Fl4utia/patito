@@ -5,7 +5,7 @@ Como correrlo (despues de generar el codigo con ANTLR):
     pip install pytest
     python -m pytest test_babyduck.py -v
 """
-from main import analizar_texto
+from generated.main import analizar_texto
 
 
 # Funciones de apoyo

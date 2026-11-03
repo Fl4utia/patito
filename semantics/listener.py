@@ -8,11 +8,11 @@ ANTLR llama a enterX al entrar a la regla X y a exitX al salir de ella.
 Requiere haber generado LangListener.py con:  antlr4 -Dlanguage=Python3 Lang.g4
 """
 try:
-    from LangListener import LangListener
+    from generated.LangListener import LangListener
 except ImportError:          # permite probar el analizador sin haber generado el codigo de ANTLR
     LangListener = object
 
-from directorio_funciones import DirectorioFunciones, Funcion
+from .directorio_funciones import DirectorioFunciones, Funcion
 
 
 class AnalizadorSemantico:

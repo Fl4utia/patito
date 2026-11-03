@@ -1,0 +1,11 @@
+program demo;
+var a, b : int;
+    x : float;
+int doble(n : int) [
+    var t : int;
+    { t = n * 2; return t; }
+];
+main {
+    a = doble(3) + 1;
+}
+end

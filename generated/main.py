@@ -15,8 +15,8 @@ import sys
 from antlr4 import CommonTokenStream, InputStream
 from antlr4.error.ErrorListener import ErrorListener
 
-from LangLexer import LangLexer
-from LangParser import LangParser
+from .LangLexer import LangLexer
+from .LangParser import LangParser
 
 
 class Recolector(ErrorListener):

@@ -4,10 +4,10 @@ Pruebas de la parte semantica: cubo, tablas, directorio y validaciones.
 No necesitan ANTLR: simulan los eventos que el listener manda al analizador.
     python -m pytest test_semantica.py -v
 """
-from cubo_semantico import CuboSemantico
-from directorio_funciones import DirectorioFunciones
-from listener import AnalizadorSemantico
-from tabla_variables import TablaVariables
+from semantics.cubo_semantico import CuboSemantico
+from semantics.directorio_funciones import DirectorioFunciones
+from semantics.listener import AnalizadorSemantico
+from semantics.tabla_variables import TablaVariables
 
 
 def nuevo_programa():

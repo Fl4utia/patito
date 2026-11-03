@@ -10,7 +10,7 @@ la tabla global.
 """
 
 
-from tabla_variables import TablaVariables
+from .tabla_variables import TablaVariables
 
 
 class Funcion:
