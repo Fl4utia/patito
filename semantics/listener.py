@@ -9,7 +9,7 @@ Requiere haber generado LangListener.py con:  antlr4 -Dlanguage=Python3 Lang.g4
 """
 try:
     from generated.LangListener import LangListener
-except ImportError:          # permite probar el analizador sin haber generado el codigo de ANTLR
+except ImportError: # permite probar el analizador sin haber generado el codigo de ANTLR
     LangListener = object
 
 from .directorio_funciones import DirectorioFunciones, Funcion
@@ -17,7 +17,7 @@ from .directorio_funciones import DirectorioFunciones, Funcion
 
 class AnalizadorSemantico:
     """
-    Decisiones de diseno (se pueden cambiar aqui):
+    Decisiones de diseno :
       - Una variable local o un parametro PUEDE llamarse igual que una global
         (la local oculta a la global). Solo se rechaza el nombre repetido dentro
         del MISMO ambito.
@@ -26,7 +26,7 @@ class AnalizadorSemantico:
 
     def __init__(self):
         self.directorio = None
-        self.ambito = None          # Funcion en la que se esta (programa o funcion)
+        self.ambito = None # Funcion en la que se esta (programa o funcion)
         self.errores = []
 
     def _error(self, linea, mensaje):

@@ -1,5 +1,5 @@
 """
-Cubo semantico de BabyDuck.
+Cubo semantico.
 
 Dice, para un operador y los tipos de sus dos operandos, de que tipo es el
 resultado. Si la combinacion no es valida, devuelve None.

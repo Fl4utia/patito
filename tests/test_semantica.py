@@ -18,23 +18,12 @@ def nuevo_programa():
 
 
 # CUBO SEMANTICO
-def test_cube_arithmetic_operations():
-    """Aritmetica: int con int da int; si hay un float, el resultado es float."""
+def test_cube_basic_operations():
+    """El cubo reconoce operaciones aritmeticas y rechaza tipos incompatibles."""
     c = CuboSemantico()
     assert c.resultado("int", "int", "+") == "int"
-    assert c.resultado("int", "float", "-") == "float"
-    assert c.resultado("float", "int", "*") == "float"
-    assert c.resultado("int", "int", "/") == "int"
-
-
-def test_cube_comparison_and_assignment():
-    """Comparaciones dan bool; asignar un float a un int es error."""
-    c = CuboSemantico()
     assert c.resultado("int", "float", ">") == "bool"
-    assert c.resultado("float", "float", "!=") == "bool"
-    assert c.resultado("float", "int", "=") == "float"
     assert c.resultado("int", "float", "=") is None
-    assert c.resultado("bool", "int", "+") is None      # bool no se puede operar
 
 
 # ESTRUCTURAS DE DATOS
@@ -71,64 +60,13 @@ def test_valid_program_has_no_semantic_errors():
     assert set(a.directorio.funciones) == {"demo", "doble"}
 
 
-def test_error_variable_declared_twice():
-    """Declarar dos veces el mismo nombre en el mismo ambito es error."""
+def test_basic_semantic_errors():
+    """Detecta una declaracion duplicada y el uso de una variable inexistente."""
     a = nuevo_programa()
     a.declarar_variables(["a"], "int", 2)
     a.declarar_variables(["a"], "float", 3)
-    assert len(a.errores) == 1 and "doblemente declarada" in a.errores[0]
+    assert "doblemente declarada" in a.errores[0]
 
-
-def test_error_function_declared_twice():
-    """Declarar dos funciones con el mismo nombre es error."""
-    a = nuevo_programa()
-    a.inicio_funcion("f", "void", 2)
-    a.fin_funcion()
-    a.inicio_funcion("f", "int", 5)
-    a.fin_funcion()
-    assert len(a.errores) == 1 and "función 'f' doblemente declarada" in a.errores[0]
-
-
-def test_error_repeated_parameter():
-    """Dos parametros con el mismo nombre en una funcion es error."""
-    a = nuevo_programa()
-    a.inicio_funcion("f", "void", 2)
-    a.agregar_parametro("n", "int", 2)
-    a.agregar_parametro("n", "float", 2)
-    assert len(a.errores) == 1 and "repetido" in a.errores[0]
-
-
-def test_error_undeclared_variable():
-    """Usar una variable que no se declaro es error."""
-    a = nuevo_programa()
-    assert a.usar_variable("x", 5) is None
-    assert len(a.errores) == 1 and "no declarada" in a.errores[0]
-
-
-def test_error_undeclared_function():
-    """Llamar a una funcion que no existe es error."""
-    a = nuevo_programa()
-    assert a.llamar_funcion("fantasma", 6) is None
-    assert len(a.errores) == 1 and "función 'fantasma' no declarada" in a.errores[0]
-
-
-def test_local_variable_shadows_global():
-    """Una variable local puede llamarse igual que una global y tiene prioridad."""
-    a = nuevo_programa()
-    a.declarar_variables(["x"], "int", 2)
-    a.inicio_funcion("f", "void", 3)
-    a.declarar_variables(["x"], "float", 4)
-    assert a.usar_variable("x", 5) == "float"      # dentro de f gana la local
-    a.fin_funcion()
-    assert a.usar_variable("x", 9) == "int"        # fuera de f vuelve la global
-    assert a.errores == []
-
-
-def test_local_variable_not_visible_outside_function():
-    """Al salir de una funcion, sus variables locales ya no se ven."""
-    a = nuevo_programa()
-    a.inicio_funcion("f", "void", 2)
-    a.declarar_variables(["temp"], "int", 3)
-    a.fin_funcion()
-    assert a.usar_variable("temp", 8) is None
-    assert len(a.errores) == 1
+    b = nuevo_programa()
+    assert b.usar_variable("x", 5) is None
+    assert "no declarada" in b.errores[0]

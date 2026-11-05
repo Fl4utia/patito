@@ -16,8 +16,8 @@ from .tabla_variables import TablaVariables
 class Funcion:
     def __init__(self, nombre, retorno):
         self.nombre = nombre
-        self.retorno = retorno          # "void", "int", "float" (None para el programa)
-        self.parametros = []            # lista ordenada de (nombre, tipo)
+        self.retorno = retorno # "void", "int", "float" (None para el programa)
+        self.parametros = [] # lista ordenada de (nombre, tipo)
         self.variables = TablaVariables()
 
 
