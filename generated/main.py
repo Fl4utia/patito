@@ -5,14 +5,16 @@ Antes de usarlo, genera el scanner y el parser (necesita Java):
     pip install antlr4-tools antlr4-python3-runtime
     antlr4 -Dlanguage=Python3 Lang.g4
 
-Uso:
-    python main.py programa.bd             valida el programa
-    python main.py programa.bd --tokens    ademas lista los tokens
-    python main.py programa.bd --tree      ademas imprime el arbol de derivacion
+Uso (desde la raiz del repo):
+    python -m generated.main programa.txt                 valida el programa
+    python -m generated.main programa.txt --tokens        ademas lista los tokens
+    python -m generated.main programa.txt --tree          ademas imprime el arbol de derivacion
+    python -m generated.main programa.txt --tables        ademas imprime el directorio de funciones
+    python -m generated.main programa.txt --cuadruplos    ademas imprime la fila de cuadruplos
 """
 import sys
 
-from antlr4 import CommonTokenStream, InputStream
+from antlr4 import CommonTokenStream, InputStream, ParseTreeWalker
 from antlr4.error.ErrorListener import ErrorListener
 
 from .LangLexer import LangLexer
@@ -57,6 +59,24 @@ def analizar_texto(src, con_arbol=False):
     return r
 
 
+def analizar_semantica(src):
+    """
+    Corre el analisis semantico y genera los cuadruplos.
+
+    Solo analiza si el programa no tiene errores lexicos ni de sintaxis.
+    Devuelve (errores, directorio de funciones, fila de cuadruplos).
+    """
+    from semantics.listener import ListenerSemantico
+
+    parser, stream, lex_l, syn_l = construir(src)
+    arbol = parser.programa()
+    if lex_l.errores or syn_l.errores:
+        return [], None, None
+    listener = ListenerSemantico()
+    ParseTreeWalker().walk(listener, arbol)
+    return listener.analizador.errores, listener.analizador.directorio, listener.generador.fila
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -79,6 +99,18 @@ def main():
 
     if "--tree" in sys.argv:
         print(r["arbol"])
+
+    with open(ruta, encoding="utf-8") as f:
+        sem_errores, directorio, fila = analizar_semantica(f.read())
+    if sem_errores:
+        print(f"[ERROR SEMÁNTICO] {ruta}")
+        for e in sem_errores:
+            print("  ", e)
+        sys.exit(1)
+    if "--tables" in sys.argv:
+        print(directorio.mostrar())
+    if "--cuadruplos" in sys.argv:
+        print(fila.mostrar())
     print(f"[OK] {ruta}: programa válido")
 
 
