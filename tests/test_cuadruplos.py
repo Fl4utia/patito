@@ -74,6 +74,7 @@ def test_relational_expression():
     assert cuadruplos(programa("if (a + 1 > b) { a = 1; };")) == [
         "(+, a, 1, t1)",
         "(>, t1, b, t2)",
+        "(GOTOF, t2, -, 5)",
         "(=, 1, -, a)",
     ]
 
@@ -100,3 +101,59 @@ def test_error_no_cascade_for_undeclared_variable():
     """Una variable no declarada da un solo error, sin errores en cadena ni cuadruplos."""
     r = errores(programa("a = z + 1;"))
     assert len(r) == 1 and "variable 'z' no declarada" in r[0]
+
+
+# ESTATUTOS DE CONTROL Y FUNCIONES
+def test_if_else_quadruples():
+    resultado = cuadruplos(programa(
+        "if (a > 1) { b = 2; } else { b = 3; };"
+    ))
+    assert resultado == [
+        "(>, a, 1, t1)",
+        "(GOTOF, t1, -, 4)",
+        "(=, 2, -, b)",
+        "(GOTO, -, -, 6)",
+        "(=, 3, -, b)",
+    ]
+
+
+def test_while_quadruples():
+    resultado = cuadruplos(programa(
+        "while (a < 10) do { a = a + 1; };"
+    ))
+    assert resultado == [
+        "(<, a, 10, t1)",
+        "(GOTOF, t1, -, 6)",
+        "(+, a, 1, t2)",
+        "(=, t2, -, a)",
+        "(GOTO, -, -, 1)",
+    ]
+
+
+def test_function_call_quadruples():
+    resultado = cuadruplos("""program demo;
+var a : int;
+int doble(n : int) [
+    var t : int;
+    { t = n * 2; return t; }
+];
+main { a = doble(3) + 1; }
+end""")
+    assert resultado == [
+        "(*, n, 2, t1)",
+        "(=, t1, -, t)",
+        "(RETURN, -, -, t)",
+        "(ENDFUNC, -, -, -)",
+        "(ERA, -, -, doble)",
+        "(PARAM, 3, -, n)",
+        "(GOSUB, -, -, doble)",
+        "(+, t2, 1, t3)",
+        "(=, t3, -, a)",
+    ]
+
+
+def test_virtual_addresses_in_quadruples():
+    _, _, fila = analizar_semantica(programa("a = 1 + 2;"))
+    texto = fila.mostrar_virtual()
+    assert "(+, 10000, 10001, 7000)" in texto
+    assert "(=, 7000, -, 1000)" in texto

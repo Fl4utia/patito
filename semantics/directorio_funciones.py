@@ -18,14 +18,19 @@ class Funcion:
         self.nombre = nombre
         self.retorno = retorno # "void", "int", "float" (None para el programa)
         self.parametros = [] # lista ordenada de (nombre, tipo)
-        self.variables = TablaVariables()
+        self.variables = None
+        self.inicio = None
+        self.retorno_address = None
 
 
 class DirectorioFunciones:
-    def __init__(self, nombre_programa):
+    def __init__(self, nombre_programa, memoria=None):
         self.nombre_programa = nombre_programa
+        self.memoria = memoria
         self.funciones = {}
-        self.funciones[nombre_programa] = Funcion(nombre_programa, None)
+        programa = Funcion(nombre_programa, None)
+        programa.variables = TablaVariables(memoria, "global")
+        self.funciones[nombre_programa] = programa
 
     @property
     def global_(self):
@@ -39,7 +44,9 @@ class DirectorioFunciones:
         """Registra la funcion. Devuelve None si el nombre ya existe."""
         if nombre in self.funciones:
             return None
-        self.funciones[nombre] = Funcion(nombre, retorno)
+        funcion = Funcion(nombre, retorno)
+        funcion.variables = TablaVariables(self.memoria, "local")
+        self.funciones[nombre] = funcion
         return self.funciones[nombre]
 
     def obtener_funcion(self, nombre):
@@ -67,5 +74,5 @@ class DirectorioFunciones:
             params = ", ".join(f"{n}: {t}" for n, t in f.parametros)
             lineas.append(f"{f.nombre} ({etiqueta}) params=[{params}]")
             for nombre, info in f.variables.variables.items():
-                lineas.append(f"    {nombre}: {info['tipo']}")
+                lineas.append(f"    {nombre}: {info['tipo']} @{info['address']}")
         return "\n".join(lineas)

@@ -8,14 +8,19 @@ Se eligio un diccionario porque buscar y detectar un nombre repetido cuesta O(1)
 
 
 class TablaVariables:
-    def __init__(self):
+    def __init__(self, memoria=None, ambito="global"):
         self.variables = {}
+        self.memoria = memoria
+        self.ambito = ambito
 
     def agregar(self, nombre, tipo):
         """Agrega la variable. Devuelve False si el nombre ya existe en esta tabla."""
         if nombre in self.variables:
             return False
-        self.variables[nombre] = {"tipo": tipo, "address": None}
+        address = None
+        if self.memoria is not None:
+            address = self.memoria.asignar_variable(self.ambito, tipo)
+        self.variables[nombre] = {"tipo": tipo, "address": address}
         return True
 
     def existe(self, nombre):

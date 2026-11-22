@@ -240,13 +240,162 @@ Las pruebas cubren el scanner, el parser, las tablas semánticas, el cubo, las
 validaciones y la generación de cuádruplos para expresiones y estatutos
 lineales.
 
-## Alcance actual y siguientes pasos
+## Direcciones virtuales
 
-La generación de cuádruplos ya cubre expresiones, asignaciones, entrada,
-salida, retornos y validación de tipos. En esta entrega, las condiciones de
-`if` y `while` se evalúan y después se descarta su resultado; todavía no se
-generan saltos `GOTOF`/`GOTO`. De forma similar, las llamadas limpian sus
-argumentos de las pilas, pero todavía no generan `ERA`, `PARAM` ni `GOSUB`.
+Cada variable, constante y temporal recibe una dirección fija dentro de un
+segmento. Las direcciones permiten que los cuádruplos se ejecuten sin depender
+del nombre original de los identificadores.
 
-La memoria virtual (`address` en las tablas) también queda preparada pero aún
-no está implementada.
+| Segmento | `int` | `float` | `bool` | `string` |
+|---|---:|---:|---:|---:|
+| Global | 1000-1999 | 2000-2999 | 3000-3999 | 13000-13999 |
+| Local | 4000-4999 | 5000-5999 | 6000-6999 | 13000-13999 |
+| Temporal | 7000-7999 | 8000-8999 | 9000-9999 | No aplica |
+| Constante | 10000-10999 | 11000-11999 | 12000-12999 | 13000-13999 |
+
+Cada segmento mantiene un contador independiente. `TablaVariables` guarda
+`{"tipo": ..., "address": ...}`, las constantes iguales reutilizan dirección y
+los temporales reciben una dirección al crearse. La fila también conserva
+`mostrar_virtual()` para inspeccionar los operandos ya traducidos.
+
+```text
+a = 1 + 2;
+
+(+, 10000, 10001, 7000)
+(=, 7000, -, 1000)
+```
+
+## Puntos neurálgicos y flujo general
+
+```text
+┌────────────┐  caracteres  ┌───────┐  tokens  ┌────────┐
+│ Código     │ ───────────> │ Lexer │ ───────> │ Parser │
+└────────────┘              └───────┘          └────┬───┘
+                                                   │ árbol
+                                                   v
+                                         ┌─────────────────┐
+                                         │ Listener       │
+                                         └───┬─────────┬───┘
+                                             │         │
+                                      tablas/types   pilas
+                                             │         │
+                                             v         v
+                                      ┌─────────┐  ┌─────────┐
+                                      │ Directorio│  │Cubo     │
+                                      └────┬────┘  └────┬────┘
+                                           │              │
+                                           v              v
+                                         ┌────────────────┐
+                                         │ FilaCuadruplos │
+                                         └────────────────┘
+```
+
+### Expresiones
+
+```text
+enterFactor / exitFactor
+        │
+        │ variable o constante
+        v
+[operandos] [tipos] [direcciones]
+        │
+        v
+enterTermino / enterExp / enterExpresion
+        │
+        │ apila operador
+        v
+exitTermino / exitExp / exitExpresion
+        │
+        │ saca operandos y operador
+        v
+consulta CuboSemantico
+        │
+        ├─ tipo válido -> crea temporal y agrega cuadruplo
+        └─ tipo inválido -> reporta error y propaga "error"
+```
+
+### `if / else`
+
+```text
+enterCondition
+    -> crea marco en pila de condiciones
+
+exitExpresion
+    -> reduce la condición
+    -> agrega GOTOF(condición, -, salto pendiente)
+
+enterElsep
+    -> rellena GOTOF con el inicio del else
+    -> agrega GOTO pendiente
+
+exitCondition
+    -> rellena GOTO con la siguiente instrucción
+```
+
+Sin `else`, `GOTOF` se rellena al terminar el cuerpo. Los números del salto
+son índices de instrucciones de la fila, no direcciones virtuales.
+
+### `while ... do`
+
+```text
+enterCycle
+    -> guarda la siguiente instrucción como inicio del ciclo
+
+exitExpresion
+    -> agrega GOTOF(condición, -, salida pendiente)
+
+exitCycle
+    -> agrega GOTO hacia el inicio
+    -> rellena GOTOF con la siguiente instrucción
+```
+
+### Declaración de función
+
+```text
+enterFunc
+    -> registra nombre y tipo de retorno
+    -> activa el ámbito local
+    -> agrega parámetros con direcciones locales
+    -> guarda el inicio de la función
+
+exitDecl
+    -> asigna direcciones a las variables locales
+
+exitReturnStmt
+    -> valida el tipo contra el retorno de la función
+    -> agrega RETURN
+
+exitFunc
+    -> agrega ENDFUNC
+    -> restaura el ámbito global
+```
+
+### Invocación de función
+
+```text
+enterCall
+    -> valida que la función exista
+    -> agrega ERA
+    -> guarda el tamaño de las pilas
+
+exitExpresion (argumentos)
+    -> deja una dirección por cada argumento
+
+exitCall
+    -> valida número y tipos
+    -> agrega PARAM por argumento
+    -> agrega GOSUB
+    -> crea temporal si la función tiene retorno
+```
+
+Los cuádruplos especiales principales son:
+
+| Operador | Significado |
+|---|---|
+| `GOTOF` | Si la condición es falsa, salta a la instrucción indicada. |
+| `GOTO` | Salta incondicionalmente. |
+| `ERA` | Reserva el registro de activación de la función llamada. |
+| `PARAM` | Entrega un argumento a un parámetro. |
+| `GOSUB` | Transfiere control a la función. |
+| `RETURN` | Regresa el resultado de una función. |
+| `ENDFUNC` | Marca el final de la función. |

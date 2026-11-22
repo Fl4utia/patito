@@ -8,6 +8,7 @@ from semantics.cubo_semantico import CuboSemantico
 from semantics.directorio_funciones import DirectorioFunciones
 from semantics.listener import AnalizadorSemantico
 from semantics.tabla_variables import TablaVariables
+from semantics.memoria_virtual import MemoriaVirtual
 
 
 def nuevo_programa():
@@ -70,3 +71,16 @@ def test_basic_semantic_errors():
     b = nuevo_programa()
     assert b.usar_variable("x", 5) is None
     assert "no declarada" in b.errores[0]
+
+
+# DIRECCIONES VIRTUALES
+def test_virtual_address_segments():
+    memoria = MemoriaVirtual()
+    assert memoria.asignar_variable("global", "int") == 1000
+    assert memoria.asignar_variable("global", "float") == 2000
+    assert memoria.asignar_variable("local", "int") == 4000
+    assert memoria.asignar_temporal("int") == 7000
+    assert memoria.asignar_temporal("float") == 8000
+    assert memoria.asignar_constante("3", "int") == 10000
+    assert memoria.asignar_constante("3.14", "float") == 11000
+    assert memoria.asignar_constante("hola", "string") == 13000
