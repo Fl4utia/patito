@@ -56,6 +56,8 @@ class AnalizadorSemantico:
             self.error(linea, f"función '{nombre}' doblemente declarada")
             # Se analiza su cuerpo en una funcion desechable para no ensuciar el directorio
             funcion = Funcion(nombre, retorno)
+        if retorno in ("int", "float"):
+            funcion.retorno_address = self.memoria.asignar_temporal(retorno)
         self.ambito = funcion
 
     # Punto neuralgico 4: por cada parametro "id : tipo"
@@ -270,7 +272,11 @@ class GeneradorCuadruplos:
             self.analizador.error(
                 linea, f"return de tipo {tipo} en una función que regresa {retorno}")
             return
-        self.fila.agregar("RETURN", None, None, valor, None, None, direccion_valor)
+        direccion_retorno = self.analizador.ambito.retorno_address
+        self.fila.agregar(
+            "RETURN", valor, None, "retorno",
+            direccion_valor, None, direccion_retorno,
+        )
 
     # Punto neuralgico 17: la expresion de un if o while ya se evaluo.
     def iniciar_if(self):
@@ -380,6 +386,11 @@ class GeneradorCuadruplos:
             direccion_temporal = self.ultimo_temporal[1]
             llamada["temporal"] = (temporal, funcion.retorno, direccion_temporal)
             self.llamada_actual_temporal = llamada["temporal"]
+            direccion_retorno = funcion.retorno_address
+            self.fila.agregar(
+                "=", nombre + "()", None, temporal,
+                direccion_retorno, None, direccion_temporal,
+            )
 
     def resultado_llamada(self, nombre, linea):
         """Una llamada dentro de una expresion: apila su temporal de retorno."""
@@ -405,11 +416,15 @@ class ListenerSemantico(LangListener):
         self.analizador.inicio_programa(ctx.ID().getText())
         self.generador = GeneradorCuadruplos(self.analizador)
         programa = self.analizador.directorio.obtener_funcion(ctx.ID().getText())
-        programa.inicio = 1
+        programa.inicio = None
 
     def enterBody(self, ctx):
-        if self.analizador.ambito.retorno is None:
-            self.analizador.ambito.inicio = self.generador.fila.siguiente()
+        if type(ctx.parentCtx).__name__ == "ProgramaContext":
+            programa = self.analizador.directorio.obtener_funcion(
+                self.analizador.directorio.nombre_programa
+            )
+            if programa.inicio is None:
+                programa.inicio = self.generador.fila.siguiente()
 
     # decl: ids COLON tipo SEMI      (ids es recursiva: ID | ID COMMA ids)
     def exitDecl(self, ctx):

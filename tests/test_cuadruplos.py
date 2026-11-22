@@ -142,11 +142,12 @@ end""")
     assert resultado == [
         "(*, n, 2, t1)",
         "(=, t1, -, t)",
-        "(RETURN, -, -, t)",
+        "(RETURN, t, -, retorno)",
         "(ENDFUNC, -, -, -)",
         "(ERA, -, -, doble)",
         "(PARAM, 3, -, n)",
         "(GOSUB, -, -, doble)",
+        "(=, doble(), -, t2)",
         "(+, t2, 1, t3)",
         "(=, t3, -, a)",
     ]
@@ -157,3 +158,28 @@ def test_virtual_addresses_in_quadruples():
     texto = fila.mostrar_virtual()
     assert "(+, 10000, 10001, 7000)" in texto
     assert "(=, 7000, -, 1000)" in texto
+
+
+def test_main_inicio_is_first_main_quadruple():
+    _, directorio, fila = analizar_semantica(programa(
+        "if (a > 1) { b = 2; } else { b = 3; }; "
+        "while (a < 10) do { a = a + 1; };"
+    ))
+    main = directorio.obtener_funcion("demo")
+    assert main.inicio == 1
+    assert fila.cuadruplos[main.inicio - 1].operador == ">"
+
+
+def test_function_return_address_is_copied_to_call_temporal():
+    _, directorio, fila = analizar_semantica("""program demo;
+var a : int;
+int doble(n : int) [
+    var t : int;
+    { t = n * 2; return t; }
+];
+main { a = doble(3) + 1; }
+end""")
+    funcion = directorio.obtener_funcion("doble")
+    texto = fila.mostrar_virtual()
+    assert "(RETURN, 4001, -, 7000)" in texto
+    assert "(=, 7000, -, 7002)" in texto
