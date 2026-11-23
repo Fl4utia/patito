@@ -399,3 +399,77 @@ Los cuádruplos especiales principales son:
 | `GOSUB` | Transfiere control a la función. |
 | `RETURN` | Regresa el resultado de una función. |
 | `ENDFUNC` | Marca el final de la función. |
+
+## Máquina Virtual
+
+La Máquina Virtual interpreta la fila de cuádruplos. El contador de programa
+`ip` indica el cuádruplo actual y avanza o cambia por `GOTO`, `GOTOF`,
+`GOSUB`, `RETURN` y `ENDFUNC`.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│                         CUÁDRUPLOS                            │
+└──────────────────────────────┬───────────────────────────────┘
+                               │ ip
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     MaquinaVirtual                           │
+├──────────────┬──────────────┬──────────────┬────────────────┤
+│ Memoria      │ Memoria      │ Pila de      │ Pila de        │
+│ global       │ constante    │ frames       │ retornos       │
+└──────────────┴──────────────┴──────────────┴────────────────┘
+```
+
+### Memoria de ejecución
+
+```text
+Direcciones globales        Direcciones locales/temporales
+┌────────────────────┐      ┌────────────────────────────────┐
+│ 1000-3999 global   │      │ frame activo                   │
+│ 1000 int           │      │ 4000-4999  int local           │
+│ 2000 float         │      │ 5000-5999  float local         │
+│ 3000 bool          │      │ 6000-6999  bool local          │
+└────────────────────┘      │ 7000-7999  temporal int        │
+                            │ 8000-8999  temporal float      │
+                            │ 9000-9999  temporal bool       │
+                            └────────────────────────────────┘
+
+Direcciones constantes
+┌────────────────────────────────┐
+│ 10000-10999  constantes int    │
+│ 11000-11999  constantes float  │
+│ 12000-12999  constantes bool   │
+│ 13000-13999  strings           │
+└────────────────────────────────┘
+```
+
+### Registro de Activación
+
+Cada `ERA` crea un registro pendiente y cada `GOSUB` activa el último registro:
+
+```text
+┌─────────────────────────────────┐
+│ Registro de Activación          │
+├─────────────────────────────────┤
+│ nombre de función               │
+│ dirección de inicio             │
+│ dirección de retorno            │
+│ parámetros locales              │
+│ variables locales               │
+│ temporales locales              │
+│ siguiente instrucción llamador  │
+└─────────────────────────────────┘
+```
+
+Las llamadas recursivas crean un nuevo frame y conservan las direcciones
+locales de cada activación por separado.
+
+### Flujo de una función
+
+```text
+ERA ──> crear frame pendiente
+PARAM ──> copiar argumento a parámetro
+GOSUB ──> guardar retorno y activar frame
+RETURN ──> guardar valor y regresar al llamador
+ENDFUNC ──> retirar frame
+```

@@ -110,7 +110,7 @@ def test_if_else_quadruples():
     ))
     assert resultado == [
         "(>, a, 1, t1)",
-        "(GOTOF, t1, -, 4)",
+        "(GOTOF, t1, -, 5)",
         "(=, 2, -, b)",
         "(GOTO, -, -, 6)",
         "(=, 3, -, b)",
@@ -183,3 +183,21 @@ end""")
     texto = fila.mostrar_virtual()
     assert "(RETURN, 4001, -, 7000)" in texto
     assert "(=, 7000, -, 7002)" in texto
+
+
+def test_nested_function_call_uses_separate_return_temporals():
+    _, _, fila = analizar_semantica("""program demo;
+var a : int;
+int suma(n : int, m : int) [
+    { return n + m; }
+];
+int doble(n : int) [
+    { return n * 2; }
+];
+main { a = doble(suma(1, 2)) + 1; }
+end""")
+    virtual = fila.mostrar_virtual()
+    assert "(PARAM, 10001, -, 4000)" in virtual
+    assert "(PARAM, 10000, -, 4001)" in virtual
+    assert "(GOSUB" in virtual
+    assert "(=, 7000" in virtual

@@ -130,6 +130,7 @@ class GeneradorCuadruplos:
         self.fila = FilaCuadruplos()
         self.contador_temporales = 0       # para nombrar t1, t2, t3...
         self.tamanos_llamada = []          # tamano de la pila de operandos al abrir cada llamada
+        self.pila_resultados_llamadas = []
         self.ultimo_temporal = None
 
     # ---------- Apoyo ----------
@@ -306,9 +307,9 @@ class GeneradorCuadruplos:
         if not self.pila_condiciones:
             return
         frame = self.pila_condiciones[-1]
+        frame["goto"] = self.fila.agregar("GOTO", None, None, None)
         if frame["gotof"] is not None:
             self.fila.llenar(frame["gotof"], self.fila.siguiente())
-        frame["goto"] = self.fila.agregar("GOTO", None, None, None)
 
     def cerrar_if(self):
         if not self.pila_condiciones:
@@ -338,7 +339,7 @@ class GeneradorCuadruplos:
         })
         self.fila.agregar("ERA", None, None, nombre)
 
-    def cerrar_llamada(self, nombre, linea):
+    def cerrar_llamada(self, nombre, linea, usar_en_expresion=False):
         if not self.tamanos_llamada:
             return
         llamada = self.tamanos_llamada.pop()
@@ -385,12 +386,13 @@ class GeneradorCuadruplos:
             temporal = self.nuevo_temporal(funcion.retorno)
             direccion_temporal = self.ultimo_temporal[1]
             llamada["temporal"] = (temporal, funcion.retorno, direccion_temporal)
-            self.llamada_actual_temporal = llamada["temporal"]
             direccion_retorno = funcion.retorno_address
             self.fila.agregar(
                 "=", nombre + "()", None, temporal,
                 direccion_retorno, None, direccion_temporal,
             )
+            if usar_en_expresion:
+                self.pila_resultados_llamadas.append(llamada["temporal"])
 
     def resultado_llamada(self, nombre, linea):
         """Una llamada dentro de una expresion: apila su temporal de retorno."""
@@ -400,8 +402,8 @@ class GeneradorCuadruplos:
         elif funcion.retorno == "void":
             self.analizador.error(linea, f"la función void '{nombre}' no regresa valor")
             self.meter_operando("error", "error")
-        elif hasattr(self, "llamada_actual_temporal"):
-            temporal, tipo, direccion = self.llamada_actual_temporal
+        elif self.pila_resultados_llamadas:
+            temporal, tipo, direccion = self.pila_resultados_llamadas.pop()
             self.meter_operando(temporal, tipo, direccion)
 
 
@@ -559,4 +561,9 @@ class ListenerSemantico(LangListener):
         self.generador.abrir_llamada(ctx.ID().getText(), ctx.start.line)
 
     def exitCall(self, ctx):
-        self.generador.cerrar_llamada(ctx.ID().getText(), ctx.start.line)
+        usar_en_expresion = type(ctx.parentCtx).__name__ == "FactorContext"
+        self.generador.cerrar_llamada(
+            ctx.ID().getText(),
+            ctx.start.line,
+            usar_en_expresion,
+        )
