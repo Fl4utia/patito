@@ -20,10 +20,16 @@ end"""
 
 
 def cuadruplos(input_text):
-    """Devuelve la fila de cuadruplos como lista de textos, sin los numeros."""
+    """
+    Devuelve la fila de cuadruplos como lista de textos, sin los numeros.
+    Quita el (GOTO main) inicial y el (END) final, que siempre estan.
+    """
     errores, _, fila = analizar_semantica(input_text)
     assert errores == []
-    return [str(c) for c in fila.cuadruplos]
+    textos = [str(c) for c in fila.cuadruplos]
+    assert textos[0].startswith("(GOTO, -, -, ")
+    assert textos[-1] == "(END, -, -, -)"
+    return textos[1:-1]
 
 
 def errores(input_text):
@@ -74,7 +80,7 @@ def test_relational_expression():
     assert cuadruplos(programa("if (a + 1 > b) { a = 1; };")) == [
         "(+, a, 1, t1)",
         "(>, t1, b, t2)",
-        "(GOTOF, t2, -, 5)",
+        "(GOTOF, t2, -, 6)",
         "(=, 1, -, a)",
     ]
 
@@ -110,9 +116,9 @@ def test_if_else_quadruples():
     ))
     assert resultado == [
         "(>, a, 1, t1)",
-        "(GOTOF, t1, -, 5)",
+        "(GOTOF, t1, -, 6)",
         "(=, 2, -, b)",
-        "(GOTO, -, -, 6)",
+        "(GOTO, -, -, 7)",
         "(=, 3, -, b)",
     ]
 
@@ -123,10 +129,10 @@ def test_while_quadruples():
     ))
     assert resultado == [
         "(<, a, 10, t1)",
-        "(GOTOF, t1, -, 6)",
+        "(GOTOF, t1, -, 7)",
         "(+, a, 1, t2)",
         "(=, t2, -, a)",
-        "(GOTO, -, -, 1)",
+        "(GOTO, -, -, 2)",
     ]
 
 
@@ -142,12 +148,12 @@ end""")
     assert resultado == [
         "(*, n, 2, t1)",
         "(=, t1, -, t)",
-        "(RETURN, t, -, retorno)",
+        "(RETURN, t, -, doble)",
         "(ENDFUNC, -, -, -)",
         "(ERA, -, -, doble)",
         "(PARAM, 3, -, n)",
         "(GOSUB, -, -, doble)",
-        "(=, doble(), -, t2)",
+        "(=, doble, -, t2)",
         "(+, t2, 1, t3)",
         "(=, t3, -, a)",
     ]
@@ -166,7 +172,7 @@ def test_main_inicio_is_first_main_quadruple():
         "while (a < 10) do { a = a + 1; };"
     ))
     main = directorio.obtener_funcion("demo")
-    assert main.inicio == 1
+    assert main.inicio == 2
     assert fila.cuadruplos[main.inicio - 1].operador == ">"
 
 
@@ -180,9 +186,10 @@ int doble(n : int) [
 main { a = doble(3) + 1; }
 end""")
     funcion = directorio.obtener_funcion("doble")
+    assert funcion.retorno_address == 1001          # global int despues de 'a'
     texto = fila.mostrar_virtual()
-    assert "(RETURN, 4001, -, 7000)" in texto
-    assert "(=, 7000, -, 7002)" in texto
+    assert "(RETURN, 4001, -, 1001)" in texto
+    assert "(=, 1001, -, 7000)" in texto            # main reinicia sus temporales
 
 
 def test_nested_function_call_uses_separate_return_temporals():
@@ -200,4 +207,132 @@ end""")
     assert "(PARAM, 10001, -, 4000)" in virtual
     assert "(PARAM, 10000, -, 4001)" in virtual
     assert "(GOSUB" in virtual
-    assert "(=, 7000" in virtual
+    # cada funcion tiene su propia global de retorno: suma -> 1001, doble -> 1002
+    assert "(=, 1001, -, 7000)" in virtual
+    assert "(=, 1002, -, 7001)" in virtual
+
+# DECLARACION E INVOCACION DE FUNCIONES
+FUNCIONES = """program demo;
+var a : int;
+    x : float;
+int doble(n : int) [
+    var t : int;
+    { t = n * 2; return t; }
+];
+void mostrar(v : float, k : int) [
+    { print(v); }
+];
+main { a = doble(3) + 1; mostrar(2.5, a); }
+end"""
+
+
+def test_goto_main_and_end():
+    _, directorio, fila = analizar_semantica(FUNCIONES)
+    main = directorio.obtener_funcion("demo")
+    primero = fila.cuadruplos[0]
+    assert primero.operador == "GOTO"
+    assert primero.resultado == main.inicio
+    assert fila.cuadruplos[main.inicio - 2].operador == "ENDFUNC"
+    assert fila.cuadruplos[-1].operador == "END"
+
+
+def test_locals_restart_for_each_function():
+    """Cada funcion empieza sus locales y temporales en la base del segmento."""
+    _, directorio, _ = analizar_semantica(FUNCIONES)
+    doble = directorio.obtener_funcion("doble")
+    mostrar = directorio.obtener_funcion("mostrar")
+    assert doble.variables.obtener("n")["address"] == 4000
+    assert doble.variables.obtener("t")["address"] == 4001
+    assert mostrar.variables.obtener("v")["address"] == 5000
+    assert mostrar.variables.obtener("k")["address"] == 4000
+
+
+def test_function_sizes_for_era():
+    _, directorio, _ = analizar_semantica(FUNCIONES)
+    doble = directorio.obtener_funcion("doble")
+    assert doble.tamano == {
+        "local": {"int": 2, "float": 0, "bool": 0},
+        "temporal": {"int": 1, "float": 0, "bool": 0},
+    }
+    mostrar = directorio.obtener_funcion("mostrar")
+    assert mostrar.tamano["local"] == {"int": 1, "float": 1, "bool": 0}
+    programa = directorio.obtener_funcion("demo")
+    # a, x y la global de retorno de doble
+    assert programa.tamano["global"] == {"int": 2, "float": 1, "bool": 0}
+    assert programa.tamano["temporal"]["int"] == 2
+
+
+def test_void_function_has_no_return_global():
+    _, directorio, fila = analizar_semantica(FUNCIONES)
+    assert directorio.obtener_funcion("mostrar").retorno_address is None
+    textos = [str(c) for c in fila.cuadruplos]
+    i = textos.index("(ERA, -, -, mostrar)")
+    assert textos[i:i + 4] == [
+        "(ERA, -, -, mostrar)",
+        "(PARAM, 2.5, -, v)",
+        "(PARAM, a, -, k)",
+        "(GOSUB, -, -, mostrar)",
+    ]
+
+
+def test_error_missing_return():
+    r = errores("""program demo;
+int f(n : int) [ { print(n); } ];
+main { print(f(1)); }
+end""")
+    assert any("debe regresar un valor" in e for e in r)
+
+
+# ANIDAMIENTO Y ERRORES EN LLAMADAS
+def test_if_inside_while_uses_jump_stack():
+    """
+    Cada GOTOF se rellena con SU destino aunque las estructuras esten anidadas.
+    (Los numeros empiezan en 2 porque el cuadruplo 1 es el GOTO a main.)
+    """
+    assert cuadruplos(programa(
+        "while (a < 3) do { if (a > 0) { b = 1; }; a = a + 1; };"
+    )) == [
+        "(<, a, 3, t1)",
+        "(GOTOF, t1, -, 10)",     # sale del while (10 = END)
+        "(>, a, 0, t2)",
+        "(GOTOF, t2, -, 7)",      # salta solo el cuerpo del if
+        "(=, 1, -, b)",
+        "(+, a, 1, t3)",
+        "(=, t3, -, a)",
+        "(GOTO, -, -, 2)",
+    ]
+
+
+def test_while_inside_if_else():
+    assert cuadruplos(programa(
+        "if (a > 0) { while (b < 2) do { b = b + 1; }; } else { b = 5; };"
+    )) == [
+        "(>, a, 0, t1)",
+        "(GOTOF, t1, -, 10)",     # al else
+        "(<, b, 2, t2)",
+        "(GOTOF, t2, -, 9)",      # sale del while
+        "(+, b, 1, t3)",
+        "(=, t3, -, b)",
+        "(GOTO, -, -, 4)",
+        "(GOTO, -, -, 11)",       # fin del if (salta el else)
+        "(=, 5, -, b)",
+    ]
+
+
+def test_error_wrong_argument_count_inside_expression():
+    """Antes tronaba el compilador (pila vacia); ahora es un error semantico."""
+    r = errores("""program demo;
+var a : int;
+int f(n : int) [ { return n; } ];
+main { a = f(1, 2) + 1; }
+end""")
+    assert len(r) == 1 and "espera 1 argumentos y recibió 2" in r[0]
+
+
+def test_error_void_function_in_expression():
+    r = errores("""program demo;
+var a : int;
+void f() [ { print(1); } ];
+main { a = f() + 1; }
+end""")
+    assert len(r) == 1 and "no regresa valor" in r[0]

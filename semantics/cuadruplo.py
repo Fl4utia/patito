@@ -8,16 +8,23 @@ Los espacios que no se usan se guardan como None y se muestran como '-'.
         1  (*, c, 2, t1)
         2  (+, b, t1, t2)
         3  (=, t2, -, a)
+
+Cada cuadruplo guarda dos versiones de sus operandos:
+    - los nombres (a, t1, 2), para leerlos facilmente;
+    - las direcciones virtuales (1000, 7000, 10000), que usa la maquina virtual.
 """
 
 
 class Cuadruplo:
     """
     Atributos:
-        operador (str): '+', '-', '*', '/', '>', '<', '!=', '=', 'PRINT', 'READ', 'RETURN'.
+        operador (str): '+', '-', '*', '/', '>', '<', '!=', '=', 'PRINT', 'READ',
+            'GOTO', 'GOTOF', 'ERA', 'PARAM', 'GOSUB', 'RETURN', 'ENDFUNC', 'END'.
         izquierdo: primer operando (nombre, constante o temporal) o None.
         derecho: segundo operando o None.
-        resultado: donde se guarda el resultado (temporal o variable) o None.
+        resultado: donde se guarda el resultado (temporal o variable), el numero
+            de cuadruplo destino de un salto, o None.
+        *_address: la direccion virtual de cada operando (o None).
     """
 
     def __init__(self, operador, izquierdo, derecho, resultado,

@@ -1,8 +1,9 @@
 # BabyDuck / Patito
 
 Compilador en construcción para el lenguaje BabyDuck. El proyecto implementa
-el scanner, el parser, el análisis semántico y una primera generación de
-cuádruplos usando [ANTLR4](https://www.antlr.org/) y Python.
+el scanner, el parser, el análisis semántico, la generación de cuádruplos con
+direcciones virtuales (incluyendo funciones) y una máquina virtual que los
+ejecuta, usando [ANTLR4](https://www.antlr.org/) y Python.
 
 ## Requisitos
 
@@ -67,6 +68,12 @@ python -m generated.main tests/prueba.txt --tables
 # Imprime la fila de cuádruplos generada
 python -m generated.main tests/prueba.txt --cuadruplos
 
+# Imprime los cuádruplos con direcciones virtuales
+python -m generated.main tests/prueba.txt --virtual
+
+# Ejecuta el programa en la máquina virtual
+python -m generated.main tests/prueba.txt --run
+
 # Ejemplo completo
 python -m generated.main tests/prueba.txt --tokens --tree --tables --cuadruplos
 ```
@@ -111,9 +118,18 @@ resuelve la precedencia y asociatividad:
 invoca métodos `enterX` y `exitX` de `ListenerSemantico`, implementado en
 [`semantics/listener.py`](./semantics/listener.py).
 
-El listener conecta cada nodo con el analizador semántico y con el generador de
-cuádruplos. El punto de entrada de la ejecución está en
+El listener no tiene lógica propia: solo decide en qué momento llamar a las
+otras clases. El punto de entrada de la ejecución está en
 [`generated/main.py`](./generated/main.py).
+
+| Archivo | Responsabilidad |
+|---|---|
+| [`semantics/listener.py`](./semantics/listener.py) | Conecta el árbol de ANTLR con los puntos neurálgicos. |
+| [`semantics/analizador.py`](./semantics/analizador.py) | Tablas: directorio, variables, ámbito actual y errores semánticos. |
+| [`semantics/generador.py`](./semantics/generador.py) | Pilas y generación de cuádruplos. |
+| [`semantics/memoria_virtual.py`](./semantics/memoria_virtual.py) | Reparte direcciones virtuales (compilación). |
+| [`semantics/maquina_virtual.py`](./semantics/maquina_virtual.py) | Ejecuta los cuádruplos (memoria de ejecución). |
+| [`semantics/directorio_funciones.py`](./semantics/directorio_funciones.py), [`tabla_variables.py`](./semantics/tabla_variables.py), [`cubo_semantico.py`](./semantics/cubo_semantico.py), [`cuadruplo.py`](./semantics/cuadruplo.py), [`pila.py`](./semantics/pila.py) | Estructuras de datos. |
 
 ### 4. Estructuras semánticas
 
@@ -121,12 +137,17 @@ cuádruplos. El punto de entrada de la ejecución está en
   parámetros en orden y su tabla de variables. El programa también se registra
   como una entrada; su tabla representa el ámbito global.
 - **Tabla de variables:** guarda el tipo de cada variable dentro de un ámbito.
-  Una variable local o un parámetro puede ocultar una variable global con el
-  mismo nombre.
+  Una variable local o un parámetro no puede tener el mismo nombre que una
+  variable global.
 - **Cubo semántico:** recibe los tipos de dos operandos y un operador. Devuelve
   el tipo resultante o `None` si la operación no es válida.
-- **Pilas:** se mantienen pilas paralelas de operandos y tipos, además de una
-  pila de operadores.
+- **Pilas del generador:**
+  - `pila_operandos`: objetos `Operando` (nombre, tipo y dirección juntos).
+  - `pila_operadores`: operadores pendientes y el fondo falso `(`.
+  - `pila_saltos`: números de cuádruplos que se rellenan después (`GOTOF`,
+    `GOTO` pendientes y el inicio de cada `while`). Al ser una sola pila, los
+    `if` y `while` anidados se resuelven en el orden correcto.
+  - `pila_llamadas`: llamadas a función abiertas (ya se generó su `ERA`).
 - **Fila de cuádruplos:** conserva las instrucciones en el orden en que se
   generan.
 
@@ -139,7 +160,7 @@ El analizador reporta:
 3. Parámetros repetidos.
 4. Variables no declaradas.
 5. Funciones no declaradas.
-6. Uso de una variable local antes que una global con el mismo nombre.
+6. Búsqueda de variables primero en el ámbito local y luego en el global.
 7. Asignaciones, operaciones, condiciones y retornos incompatibles según el
    cubo semántico.
 
@@ -237,8 +258,8 @@ python -m pytest tests/test_cuadruplos.py -v
 ```
 
 Las pruebas cubren el scanner, el parser, las tablas semánticas, el cubo, las
-validaciones y la generación de cuádruplos para expresiones y estatutos
-lineales.
+validaciones, la generación de cuádruplos (expresiones, estatutos, control y
+funciones), la memoria virtual y la ejecución en la máquina virtual.
 
 ## Direcciones virtuales
 
@@ -248,12 +269,19 @@ del nombre original de los identificadores.
 
 | Segmento | `int` | `float` | `bool` | `string` |
 |---|---:|---:|---:|---:|
-| Global | 1000-1999 | 2000-2999 | 3000-3999 | 13000-13999 |
-| Local | 4000-4999 | 5000-5999 | 6000-6999 | 13000-13999 |
+| Global | 1000-1999 | 2000-2999 | 3000-3999 | No aplica |
+| Local | 4000-4999 | 5000-5999 | 6000-6999 | No aplica |
 | Temporal | 7000-7999 | 8000-8999 | 9000-9999 | No aplica |
 | Constante | 10000-10999 | 11000-11999 | 12000-12999 | 13000-13999 |
 
-Cada segmento mantiene un contador independiente. `TablaVariables` guarda
+Los strings solo aparecen como letreros de `print`, por eso solo existen como
+constantes.
+
+Cada segmento mantiene un contador independiente. Los contadores **locales y
+temporales se reinician** al empezar cada función y al empezar `main`: cada
+función tiene su propio espacio, que en ejecución vive en su registro de
+activación. Al terminar la función se guarda en el directorio cuántas
+direcciones usó de cada tipo (`funcion.tamano`), que es lo que `ERA` reserva. `TablaVariables` guarda
 `{"tipo": ..., "address": ...}`, las constantes iguales reutilizan dirección y
 los temporales reciben una dirección al crearse. La fila también conserva
 `mostrar_virtual()` para inspeccionar los operandos ya traducidos.
@@ -317,19 +345,16 @@ consulta CuboSemantico
 ### `if / else`
 
 ```text
-enterCondition
-    -> crea marco en pila de condiciones
+exitExpresion (condición del if)
+    -> agrega GOTOF(condición, -, ?) y mete su número a pila_saltos
 
-exitExpresion
-    -> reduce la condición
-    -> agrega GOTOF(condición, -, salto pendiente)
-
-enterElsep
-    -> rellena GOTOF con el inicio del else
-    -> agrega GOTO pendiente
+enterElsep (si hay else)
+    -> agrega GOTO(-, -, ?)
+    -> saca el GOTOF de pila_saltos y lo rellena con el inicio del else
+    -> mete el GOTO a pila_saltos
 
 exitCondition
-    -> rellena GOTO con la siguiente instrucción
+    -> saca el salto pendiente y lo rellena con la siguiente instrucción
 ```
 
 Sin `else`, `GOTOF` se rellena al terminar el cuerpo. Los números del salto
@@ -339,35 +364,48 @@ son índices de instrucciones de la fila, no direcciones virtuales.
 
 ```text
 enterCycle
-    -> guarda la siguiente instrucción como inicio del ciclo
+    -> mete a pila_saltos la siguiente instrucción (inicio del ciclo)
 
-exitExpresion
-    -> agrega GOTOF(condición, -, salida pendiente)
+exitExpresion (condición del while)
+    -> agrega GOTOF(condición, -, ?) y mete su número a pila_saltos
 
 exitCycle
+    -> saca el GOTOF y luego el inicio
     -> agrega GOTO hacia el inicio
-    -> rellena GOTOF con la siguiente instrucción
+    -> rellena el GOTOF con la siguiente instrucción
 ```
 
 ### Declaración de función
 
 ```text
+enterPrograma
+    -> agrega (GOTO, -, -, ?) como cuádruplo 1: salto a main
+
 enterFunc
     -> registra nombre y tipo de retorno
-    -> activa el ámbito local
-    -> agrega parámetros con direcciones locales
-    -> guarda el inicio de la función
+    -> reinicia los contadores locales y temporales
+    -> si regresa int/float, reserva una variable GLOBAL para su retorno
+    -> agrega parámetros con direcciones locales (en orden)
+    -> guarda el número de cuádruplo donde empieza la función
 
 exitDecl
-    -> asigna direcciones a las variables locales
+    -> asigna direcciones locales a las variables de la función
 
 exitReturnStmt
     -> valida el tipo contra el retorno de la función
-    -> agrega RETURN
+    -> agrega (RETURN, valor, -, global_de_retorno)
 
 exitFunc
     -> agrega ENDFUNC
+    -> error si una función int/float no tiene ningún return
+    -> guarda el tamaño: {"local": {tipo: n}, "temporal": {tipo: n}}
     -> restaura el ámbito global
+
+enterBody (de main)
+    -> rellena el GOTO main y reinicia los temporales
+
+exitPrograma
+    -> agrega END y guarda el tamaño global y el de main
 ```
 
 ### Invocación de función
@@ -375,101 +413,128 @@ exitFunc
 ```text
 enterCall
     -> valida que la función exista
-    -> agrega ERA
-    -> guarda el tamaño de las pilas
+    -> agrega (ERA, -, -, función)
+    -> guarda el tamaño de la pila de operandos
 
 exitExpresion (argumentos)
     -> deja una dirección por cada argumento
 
 exitCall
     -> valida número y tipos
-    -> agrega PARAM por argumento
-    -> agrega GOSUB
-    -> crea temporal si la función tiene retorno
+    -> agrega (PARAM, argumento, -, parámetro) por argumento
+    -> agrega (GOSUB, -, -, inicio de la función)
+    -> si regresa valor: (=, global_de_retorno, -, temporal nuevo)
 ```
 
-Los cuádruplos especiales principales son:
+`ERA` no lleva el tamaño en el cuádruplo porque en una llamada recursiva la
+función todavía no termina de compilarse; la máquina virtual lo lee del
+directorio (`funcion.tamano`), que ya está completo al ejecutar.
 
-| Operador | Significado |
-|---|---|
-| `GOTOF` | Si la condición es falsa, salta a la instrucción indicada. |
-| `GOTO` | Salta incondicionalmente. |
-| `ERA` | Reserva el registro de activación de la función llamada. |
-| `PARAM` | Entrega un argumento a un parámetro. |
-| `GOSUB` | Transfiere control a la función. |
-| `RETURN` | Regresa el resultado de una función. |
-| `ENDFUNC` | Marca el final de la función. |
+El valor de retorno se deja en una variable global de la función (no en su
+memoria local) porque el registro de activación se destruye al regresar. El
+llamador lo copia de inmediato a un temporal propio, así que la recursión
+(`n * fact(n - 1)`) no pierde valores.
+
+Ejemplo (`tests/prueba.txt`, con `--virtual`):
+
+```text
+  1  (GOTO, -, -, 6)
+  2  (*, 4000, 10000, 7000)      t = n * 2
+  3  (=, 7000, -, 4001)
+  4  (RETURN, 4001, -, 1002)     global de retorno de doble
+  5  (ENDFUNC, -, -, -)
+  6  (ERA, -, -, doble)
+  7  (PARAM, 10001, -, 4000)     n = 3
+  8  (GOSUB, -, -, 2)
+  9  (=, 1002, -, 7000)
+ 10  (+, 7000, 10002, 7001)
+ 11  (=, 7001, -, 1000)
+ 12  (END, -, -, -)
+```
+
+### Códigos de operación
+
+| Operador | Cuádruplo | Significado |
+|---|---|---|
+| `+ - * /` | `(op, izq, der, temp)` | Aritmética. `int / int` es división entera. |
+| `> < !=` | `(op, izq, der, temp)` | Comparación; el resultado es `bool`. |
+| `=` | `(=, valor, -, destino)` | Asignación (convierte `int` a `float` si el destino es float). |
+| `PRINT` | `(PRINT, -, -, valor)` | Imprime una expresión o un letrero. |
+| `READ` | `(READ, -, -, variable)` | Lee de la entrada y convierte al tipo de la variable. |
+| `GOTO` | `(GOTO, -, -, n)` | Salta incondicionalmente al cuádruplo `n`. |
+| `GOTOF` | `(GOTOF, cond, -, n)` | Si la condición es falsa, salta al cuádruplo `n`. |
+| `ERA` | `(ERA, -, -, f)` | Crea el registro de activación de `f` con su tamaño. |
+| `PARAM` | `(PARAM, arg, -, param)` | Copia el argumento al parámetro del registro nuevo. |
+| `GOSUB` | `(GOSUB, -, -, n)` | Guarda el punto de regreso, activa el registro y salta. |
+| `RETURN` | `(RETURN, valor, -, global)` | Guarda el valor en la global de retorno y regresa. |
+| `ENDFUNC` | `(ENDFUNC, -, -, -)` | Fin de función: destruye el registro y regresa. |
+| `END` | `(END, -, -, -)` | Fin del programa. |
 
 ## Máquina Virtual
 
-La Máquina Virtual interpreta la fila de cuádruplos. El contador de programa
-`ip` indica el cuádruplo actual y avanza o cambia por `GOTO`, `GOTOF`,
-`GOSUB`, `RETURN` y `ENDFUNC`.
+La Máquina Virtual ([`semantics/maquina_virtual.py`](./semantics/maquina_virtual.py))
+interpreta la fila de cuádruplos. El apuntador `ip` indica el cuádruplo actual;
+avanza de uno en uno o cambia con `GOTO`, `GOTOF`, `GOSUB`, `RETURN` y
+`ENDFUNC`. La ejecución empieza en el cuádruplo 1 (`GOTO main`) y termina con
+`END`.
+
+### Mapa de memoria de ejecución
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│                         CUÁDRUPLOS                            │
-└──────────────────────────────┬───────────────────────────────┘
-                               │ ip
-                               ▼
-┌──────────────────────────────────────────────────────────────┐
-│                     MaquinaVirtual                           │
-├──────────────┬──────────────┬──────────────┬────────────────┤
-│ Memoria      │ Memoria      │ Pila de      │ Pila de        │
-│ global       │ constante    │ frames       │ retornos       │
-└──────────────┴──────────────┴──────────────┴────────────────┘
+MemoriaEjecucion
+├── globales     Segmento: int[] float[] bool[]      (vive todo el programa)
+├── constantes   dict dirección -> valor              (solo lectura)
+└── pila_registros
+      ├── main   RegistroActivacion
+      ├── f      RegistroActivacion
+      └── ...    (tope = función que se está ejecutando)
+
+RegistroActivacion
+├── locales      Segmento: int[] float[] bool[]   (parámetros y variables)
+├── temporales   Segmento: int[] float[] bool[]
+├── funcion      entrada del directorio (inicio, retorno, tamaño)
+└── ip_regreso   cuádruplo al que se vuelve
 ```
 
-### Memoria de ejecución
+Cada `Segmento` tiene un arreglo por tipo del tamaño exacto que calculó el
+compilador. Una dirección virtual se traduce a una celda así:
 
 ```text
-Direcciones globales        Direcciones locales/temporales
-┌────────────────────┐      ┌────────────────────────────────┐
-│ 1000-3999 global   │      │ frame activo                   │
-│ 1000 int           │      │ 4000-4999  int local           │
-│ 2000 float         │      │ 5000-5999  float local         │
-│ 3000 bool          │      │ 6000-6999  bool local          │
-└────────────────────┘      │ 7000-7999  temporal int        │
-                            │ 8000-8999  temporal float      │
-                            │ 9000-9999  temporal bool       │
-                            └────────────────────────────────┘
-
-Direcciones constantes
-┌────────────────────────────────┐
-│ 10000-10999  constantes int    │
-│ 11000-11999  constantes float  │
-│ 12000-12999  constantes bool   │
-│ 13000-13999  strings           │
-└────────────────────────────────┘
+dirección -> (segmento, tipo, desplazamiento) -> celda
+1001      -> (global,   int,   1)             -> globales.int[1]
+5002      -> (local,    float, 2)             -> tope.locales.float[2]
+7000      -> (temporal, int,   0)             -> tope.temporales.int[0]
+10003     -> (constante, int,  3)             -> constantes[10003]
 ```
 
-### Registro de Activación
+Las direcciones locales y temporales siempre se resuelven en el registro del
+tope de la pila, por eso dos llamadas a la misma función (por ejemplo en una
+recursión) no comparten memoria.
 
-Cada `ERA` crea un registro pendiente y cada `GOSUB` activa el último registro:
+### Estructuras auxiliares
+
+| Estructura | Uso |
+|---|---|
+| `pila_registros` | Registros activos; `main` está en el fondo. |
+| `registros_nuevos` | Pila de registros creados por `ERA` que esperan su `GOSUB`. Es pila porque un argumento puede contener otra llamada: `f(g(1))`. |
+| `constantes` | Tabla dirección -> valor, cargada desde la tabla de constantes del compilador. |
+| `ip` | Cuádruplo actual. |
+| `salida` | Valores impresos (útil para las pruebas). |
+
+### Flujo de una llamada
 
 ```text
-┌─────────────────────────────────┐
-│ Registro de Activación          │
-├─────────────────────────────────┤
-│ nombre de función               │
-│ dirección de inicio             │
-│ dirección de retorno            │
-│ parámetros locales              │
-│ variables locales               │
-│ temporales locales              │
-│ siguiente instrucción llamador  │
-└─────────────────────────────────┘
+ERA f      -> crea RegistroActivacion(f) con f.tamano y lo mete a registros_nuevos
+PARAM a,p  -> lee a en el registro actual y lo escribe en p del registro nuevo
+GOSUB      -> guarda ip_regreso = ip + 1, mete el registro a la pila y salta a f.inicio
+RETURN v,g -> escribe v en la global de retorno g, saca el registro y vuelve a ip_regreso
+ENDFUNC    -> saca el registro y vuelve a ip_regreso
 ```
 
-Las llamadas recursivas crean un nuevo frame y conservan las direcciones
-locales de cada activación por separado.
+### Errores de ejecución
 
-### Flujo de una función
-
-```text
-ERA ──> crear frame pendiente
-PARAM ──> copiar argumento a parámetro
-GOSUB ──> guardar retorno y activar frame
-RETURN ──> guardar valor y regresar al llamador
-ENDFUNC ──> retirar frame
-```
+- División entre cero.
+- Uso de una variable que no tiene valor asignado.
+- Una función `int`/`float` llega a `ENDFUNC` sin ejecutar `return`.
+- Desbordamiento de pila (más de 1000 llamadas anidadas).
+- Entrada de `read` que no corresponde al tipo de la variable.

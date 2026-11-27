@@ -11,6 +11,8 @@ Uso (desde la raiz del repo):
     python -m generated.main programa.txt --tree          ademas imprime el arbol de derivacion
     python -m generated.main programa.txt --tables        ademas imprime el directorio de funciones
     python -m generated.main programa.txt --cuadruplos    ademas imprime la fila de cuadruplos
+    python -m generated.main programa.txt --virtual       ademas imprime los cuadruplos con direcciones virtuales
+    python -m generated.main programa.txt --run           ademas ejecuta el programa en la maquina virtual
 """
 import sys
 
@@ -84,7 +86,10 @@ def main():
 
     ruta = sys.argv[1]
     with open(ruta, encoding="utf-8") as f:
-        r = analizar_texto(f.read(), con_arbol="--tree" in sys.argv)
+        fuente = f.read()
+
+    # 1. Scanner y parser
+    r = analizar_texto(fuente, con_arbol="--tree" in sys.argv)
 
     if "--tokens" in sys.argv:
         for tipo, texto in r["tokens"]:
@@ -100,8 +105,8 @@ def main():
     if "--tree" in sys.argv:
         print(r["arbol"])
 
-    with open(ruta, encoding="utf-8") as f:
-        sem_errores, directorio, fila = analizar_semantica(f.read())
+    # 2. Analisis semantico y generacion de cuadruplos
+    sem_errores, directorio, fila = analizar_semantica(fuente)
     if sem_errores:
         print(f"[ERROR SEMÁNTICO] {ruta}")
         for e in sem_errores:
@@ -111,7 +116,18 @@ def main():
         print(directorio.mostrar())
     if "--cuadruplos" in sys.argv:
         print(fila.mostrar())
+    if "--virtual" in sys.argv:
+        print(fila.mostrar_virtual())
     print(f"[OK] {ruta}: programa válido")
+
+    # 3. Ejecucion en la maquina virtual
+    if "--run" in sys.argv:
+        from semantics.maquina_virtual import MaquinaVirtual, ErrorEjecucion
+        try:
+            MaquinaVirtual(fila, directorio).ejecutar()
+        except ErrorEjecucion as e:
+            print(f"[ERROR DE EJECUCIÓN] {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
